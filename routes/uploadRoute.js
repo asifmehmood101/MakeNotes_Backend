@@ -29,13 +29,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     }
 
     const filePath = req.file.path;
-    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${
-      req.file.filename
-    }`;
+    const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
 
-    console.log('Received file:', req.file);
-    console.log('File URL:', fileUrl);
-
+    // Save to MongoDB
     const savedFile = await File.create({
       filename: req.file.filename,
       filepath: req.file.path,
@@ -43,10 +39,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       size: req.file.size,
     });
 
-    exec(`python3 transcribe.py "${filePath}"`, (error, stdout, stderr) => {
-      console.log('Transcription stdout:', stdout);
-      console.log('Transcription stderr:', stderr);
-
+    // Transcribe the file using Python script
+    exec(python3, transcribe.py, '${filePath}', (error, stdout, stderr) => {
+      // Optional: delete the uploaded file after processing
       fs.unlink(filePath, (unlinkErr) => {
         if (unlinkErr) {
           console.error('Failed to delete uploaded file:', unlinkErr);
@@ -54,7 +49,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       });
 
       if (error) {
-        console.error('Transcription error:', error);
+        console.error('Transcription error:', stderr);
         return res
           .status(500)
           .json({ error: 'Transcription failed', details: stderr });
@@ -72,6 +67,5 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
 
 module.exports = router;
