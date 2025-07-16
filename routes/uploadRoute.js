@@ -2,9 +2,9 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const File = require('../models/File');
-const child_Process = require("child_process");
-const fs = require("fs")
-const { exec } = child_Process
+const child_Process = require('child_process');
+const fs = require('fs');
+const { exec } = child_Process;
 
 const router = express.Router();
 
@@ -28,9 +28,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       return res.status(400).json({ message: 'No file uploaded' });
     }
 
-    const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+    const filePath = req.file.path;
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${
+      req.file.filename
+    }`;
 
-    // Save to MongoDB
+    console.log('Received file:', req.file);
+    console.log('File URL:', fileUrl);
+
     const savedFile = await File.create({
       filename: req.file.filename,
       filepath: req.file.path,
@@ -38,29 +43,35 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       size: req.file.size,
     });
 
-    res.status(200).json({
-      message: 'File uploaded and saved to DB',
-      file: savedFile,
-      fileUrl, // ✅ include this in the same response
+    exec(`python3 transcribe.py "${filePath}"`, (error, stdout, stderr) => {
+      console.log('Transcription stdout:', stdout);
+      console.log('Transcription stderr:', stderr);
+
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) {
+          console.error('Failed to delete uploaded file:', unlinkErr);
+        }
+      });
+
+      if (error) {
+        console.error('Transcription error:', error);
+        return res
+          .status(500)
+          .json({ error: 'Transcription failed', details: stderr });
+      }
+
+      res.status(200).json({
+        message: 'File uploaded and saved to DB',
+        file: savedFile,
+        fileUrl,
+        transcript: stdout.trim(),
+      });
     });
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-
-// transcriber end-point
-router.post("/transcribe", upload.single("audio", (req, res) => {
-  const filePath = req.file.path;
-  exec(`python 3 transcribe.py ${filePath}`, (error, stdout, stderr) => {
-    if(error) return res.status(500).send(stderr)
-  })
-
-  res.send(stdout);
-  fs.unlinkSync(filePath) //its optional just for code cleanup
-
-
-}))
 
 
 module.exports = router;
